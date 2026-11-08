@@ -69,11 +69,12 @@ Injection detection ([security/injection.py](backend/app/security/injection.py))
    - Upload types are checked from magic bytes, and upload size and PDF page count are capped.
    - Security headers and CORS are configured, with CORS limited to an allowlist.
    - Production refuses to start with dev secrets.
+   - `/api/health` is liveness; `/api/ready` returns 503 when the database is unreachable.
 
 ## Tests
 
 ```bash
-cd backend && pytest                       # 79 tests, SQLite
+cd backend && pytest                       # 80 tests, SQLite
 TEST_DATABASE_URL=postgresql://… pytest    # same suite on Postgres
 ruff check app tests
 ```
@@ -82,7 +83,7 @@ ruff check app tests
 - [test_agent_loop.py](backend/tests/test_agent_loop.py) covers step limits, retries, timeouts, crash and resume, lease fencing, and reaping.
 - [test_api.py](backend/tests/test_api.py) covers auth, cross-user isolation, upload validation, SSE, and the audit chain.
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint and tests on SQLite and on Postgres, the frontend type-check and build, and a Docker Compose smoke test.
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs a gitleaks secret scan over the full history, lint and tests on SQLite and on Postgres, the frontend type-check and build, and a Docker Compose smoke test that checks `/api/health` and `/api/ready`.
 
 ## Deploy
 
