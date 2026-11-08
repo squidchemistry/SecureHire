@@ -1,0 +1,59 @@
+# Render Blueprint: API + background worker + managed Postgres.
+# New > Blueprint > pick this repo. Then set GROQ_API_KEY (optional) and
+# ALLOWED_ORIGINS / ALLOWED_ORIGIN_REGEX to your frontend's URL(s).
+#
+# Free tier note: Render has no free background workers. To run on a single
+# free web service, delete the `securehire-worker` block and set
+# EMBEDDED_WORKER=true on the API.
+databases:
+  - name: securehire-db
+    databaseName: securehire
+    plan: free
+
+services:
+  - type: web
+    name: securehire-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: securehire-db, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AUDIT_HMAC_KEY
+        generateValue: true
+      - key: IDENTITY_HMAC_KEY
+        generateValue: true
+      - key: EMBEDDED_WORKER
+        value: "false"
+      - key: ALLOWED_ORIGINS
+        value: https://securehire.vercel.app
+      - key: ALLOWED_ORIGIN_REGEX
+        value: ^https://securehire-[a-z0-9-]+\.vercel\.app$
+      - key: GROQ_API_KEY
+        sync: false
+
+  - type: worker
+    name: securehire-worker
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m app.worker
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: securehire-db, property: connectionString }
+      # Must match the API's values (the worker writes audit rows and checks identities).
+      - key: JWT_SECRET
+        fromService: { type: web, name: securehire-api, envVarKey: JWT_SECRET }
+      - key: AUDIT_HMAC_KEY
+        fromService: { type: web, name: securehire-api, envVarKey: AUDIT_HMAC_KEY }
+      - key: IDENTITY_HMAC_KEY
+        fromService: { type: web, name: securehire-api, envVarKey: IDENTITY_HMAC_KEY }
+      - key: GROQ_API_KEY
+        sync: false

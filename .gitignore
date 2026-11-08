@@ -18,3 +18,5 @@ coverage/
 models/
 storage/
 data/uploads/
+!.env.example
+*.tsbuildinfo

@@ -1,0 +1,63 @@
+# Full stack: Postgres + API + worker + web (nginx serving the SPA and proxying /api).
+#   docker compose up --build      -> http://localhost:8080
+# Set GROQ_API_KEY in your shell or a .env file to use a real model; otherwise the mock LLM is used.
+x-backend-env: &backend-env
+  ENV: development
+  DATABASE_URL: postgresql://securehire:securehire@db:5432/securehire
+  JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+  AUDIT_HMAC_KEY: ${AUDIT_HMAC_KEY:-dev-only-audit-key}
+  IDENTITY_HMAC_KEY: ${IDENTITY_HMAC_KEY:-dev-only-identity-key}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+  INJECTION_ACTION: ${INJECTION_ACTION:-flag}
+  ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-8080},http://localhost:5173
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: securehire
+      POSTGRES_PASSWORD: securehire
+      POSTGRES_DB: securehire
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securehire"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      <<: *backend-env
+      EMBEDDED_WORKER: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+    healthcheck:
+      disable: true
+
+  web:
+    build: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+volumes:
+  pgdata:
