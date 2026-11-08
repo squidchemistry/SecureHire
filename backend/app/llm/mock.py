@@ -28,6 +28,28 @@ _INJECTED_CALL = re.compile(r"\b(?:call|invoke|run|execute|use)\s+(?:the\s+)?(?:
 _INJECTED_USER = re.compile(r"\buser(?:[\s_-]?id)?\s*[:=#]?\s*(\d+)\b", re.I)
 
 
+def _readable(content: str) -> str:
+    """Read a JSON observation the way a model would: as its decoded text, not escaped JSON."""
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return content
+    parts: list[str] = []
+
+    def walk(v: Any) -> None:
+        if isinstance(v, str):
+            parts.append(v)
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+
+    walk(data)
+    return "\n".join(parts)
+
+
 class MockLLM:
     name = "mock"
     supports_generation = False
@@ -54,7 +76,7 @@ class MockLLM:
         for m in reversed(messages):
             if m.get("role") != "tool":
                 break
-            content = m.get("content", "")
+            content = _readable(m.get("content", ""))
             match = _INJECTED_CALL.search(content)
             if match:
                 args: dict[str, Any] = {}

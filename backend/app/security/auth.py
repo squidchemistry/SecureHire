@@ -18,9 +18,7 @@ _SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
 def hash_password(password: str) -> str:
     salt = os.urandom(16)
     dk = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
-    return "scrypt${}${}".format(
-        base64.b64encode(salt).decode(), base64.b64encode(dk).decode()
-    )
+    return f"scrypt${base64.b64encode(salt).decode()}${base64.b64encode(dk).decode()}"
 
 
 def verify_password(password: str, stored: str) -> bool:

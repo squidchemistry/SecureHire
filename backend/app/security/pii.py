@@ -14,7 +14,9 @@ from dataclasses import dataclass, field
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _URL = re.compile(r"\b(?:https?://|www\.)\S+|\b(?:linkedin\.com|github\.com|gitlab\.com)/\S+", re.I)
 # Requires 9+ digits overall so years ("2019-2023") and version numbers survive.
-_PHONE = re.compile(r"(?<![\w])(?:\+?\d[\d\s().-]{7,}\d)(?![\w])")
+# Spaces/tabs only: a number must not swallow the start of the next line
+# (e.g. the house number of an address, which then escapes redaction).
+_PHONE = re.compile(r"(?<![\w])(?:\+?\d[\d \t().-]{7,}\d)(?![\w])")
 _STREET = re.compile(
     r"\b\d{1,5}\s+(?:[A-Z][a-zA-Z]*\s){1,4}"
     r"(?:Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Marg|Nagar)\b\.?"
@@ -65,11 +67,11 @@ def redact(text: str, *, first_line_is_name: bool = False) -> RedactionResult:
     out = sub(_PHONE, "PHONE", out, guard=lambda s: _count_digits(s) >= 9)
     out = sub(_STREET, "ADDRESS", out)
     # Postcodes only count as PII next to an address we already removed.
-    out = re.sub(
-        r"(\[ADDRESS\][^\n]{0,40}?)" + _POSTCODE.pattern,
-        lambda m: m.group(1) + "[POSTCODE]",
-        out,
-    )
+    def postcode(m: re.Match[str]) -> str:
+        counts["POSTCODE"] = counts.get("POSTCODE", 0) + 1
+        return m.group(1) + "[POSTCODE]"
+
+    out = re.sub(r"(\[ADDRESS\][^\n]{0,40}?)" + _POSTCODE.pattern, postcode, out)
     return RedactionResult(out, counts)
 
 

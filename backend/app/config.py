@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     db_pool_timeout_s: int = 10
 
     # --- Auth / crypto ------------------------------------------------------
-    jwt_secret: str = "dev-only-change-me"
+    jwt_secret: str = "dev-only-change-me"  # noqa: S105 - rejected in production
     jwt_ttl_minutes: int = 60
     jwt_issuer: str = "securehire"
     # HMAC key for pseudonymous identifiers in the audit log.
