@@ -52,3 +52,39 @@ You'll see 24 injection tests:
 - **Crash recovery:** `docker compose kill worker` during a run, then `docker compose up -d worker`. Within the lease (120 s), the run resumes from its last checkpoint and the timeline shows "Resumed from checkpoint".
 - **Tamper check:** `docker compose exec db psql -U securehire -c "UPDATE audit_log SET reason='x'"` fails with *audit_log is append-only*.
 - **Real model:** `GROQ_API_KEY=… docker compose up`. A real model may or may not fall for the injection; the guardrails behave the same either way.
+
+## Interview Q&A
+
+**1. Why not just detect prompt injection and block the document?**
+Detection is regex-based and easy to evade, so it only raises a flag (`security/injection.py`). The design assumes the model *will* be hijacked and makes that harmless. The per-step tool allowlist, strict schemas, server-side identity and output validation are the controls. The demo's mock LLM obeys every injected instruction on purpose, and the score and data stay the same.
+
+**2. How does the per-step allowlist work?**
+Each tool declares what it `requires` and what it `produces` (`agent/tools.py`). On each step the loop offers only the tools whose inputs exist and whose output doesn't yet (`AgentLoop.allowed_tools`). A call to anything else is rejected with `not_allowed` before it runs, counted as a security event, and audited. `fetch_past_analyses` can't run before a comparison exists, and `parse_resume` can't be called twice to re-read the document.
+
+**3. The attacker waits until `fetch_past_analyses` is allowed and asks for user 2. What happens?**
+Arguments containing identity keys (`user_id`, `owner`, `tenant`, …, matched case-insensitively) are rejected with `identity_field` (`agent/registry.py`). The tool's input model has `extra="forbid"`, and the user comes from the server-side `ToolContext`. Every repository function requires `user_id`, so even a valid call can only see the caller's own rows. Another user's row looks exactly like a missing one.
+
+**4. Could the model inflate the match score?**
+No. `compare_to_jd` computes the score as matched JD skills ÷ JD skills, in code, from canonical skill names. The JD is parsed server-side and never shown to the model. The final summary is built from structured fields, not model prose, so the injected "100% match" has nowhere to go. `test_injection.py` asserts that the attack run's score equals the clean run's.
+
+**5. How do you keep personal data away from a third-party LLM?**
+There are two layers. Tools redact names, emails, phones, addresses, postcodes and profile URLs before returning text. Then `PrivacyGuardLLM` (`llm/guard.py`) re-scrubs every outbound message, so a future tool that forgets to redact still can't leak. The known gap is that detection is regex-based, so a name in the middle of free text needs NER.
+
+**6. How does the job queue avoid two workers taking the same run, without Redis?**
+The queue is the `agent_runs` table. A worker claims a run with a single conditional `UPDATE … WHERE id = ? AND (queued OR lease expired)`, and only one UPDATE can match. The claim sets `lease_owner` and `lease_expires_at`, and the lease is renewed on every checkpoint.
+
+**7. What happens if a worker crashes mid-run?**
+After every step the loop checkpoints the conversation and artifacts to `agent_runs.state`. When the lease expires, another worker claims the run and resumes from the last checkpoint. Writes are fenced with `WHERE lease_owner = me`, so a stalled worker that wakes up can't overwrite the new owner's progress. Runs that keep crashing are failed after `WORKER_MAX_ATTEMPTS` by `reap_exhausted`.
+
+**8. How is the audit log tamper-evident?**
+Every row stores `sha256(prev_hash || canonical(row))` (`audit.py`). On Postgres, appends are serialised with an advisory lock so the chain stays linear across workers. DB triggers make the table append-only. Even if someone drops the triggers and edits a row, `python -m app.audit` finds the first broken link. Rows hold HMAC references and argument digests, never raw ids or content.
+
+**9. How does the live timeline work, and why not WebSockets?**
+`GET /api/runs/{id}/events` is Server-Sent Events. The server polls `run_steps` for new rows and streams them, and clients resume with `Last-Event-ID`. The updates only flow from server to client, so SSE is simpler and works through proxies. The frontend reads the stream with `fetch` instead of `EventSource`, so the JWT stays in an `Authorization` header and never appears in a URL or access log.
+
+**10. What would you change for real production scale?**
+- Move the per-process rate limits to Redis or the database.
+- Add NER-based PII detection.
+- Run tools in a subprocess or sandbox. A timed-out Python thread can't be killed, so its result is discarded but it keeps running.
+- Replace SSE polling with Postgres `LISTEN/NOTIFY`.
+- Add an evaluation set that measures how often real models fall for injections, since the guardrails are tested only against the mock.
