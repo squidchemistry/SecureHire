@@ -1,6 +1,6 @@
 # SecureHire checkpoint
 
-**State (2026-11-08):** code complete against the definition of done in `../RESTART.md`. Tagged `checkpoint-2` and `checkpoint-3`. Not pushed or deployed.
+**State (2026-11-08):** code complete against the definition of done in `../RESTART.md`. Tagged `checkpoint-2` and `checkpoint-3`. Pushed to `squidchemistry/SecureHire`; not deployed.
 
 ## Verified locally
 
@@ -16,17 +16,17 @@
 | SSE timeline | streams the full step history |
 | Cross-user read | 404 |
 | Audit log | chain verifies; `UPDATE`/`DELETE` on Postgres fail with "audit_log is append-only" |
+| GitHub Actions CI | green on `6f42f04`: gitleaks secret scan, backend (SQLite), backend (Postgres), frontend build, Docker Compose smoke test |
 | Crash recovery | worker killed at step 4; after the 120 s lease the run resumed ("resumed" event) and succeeded on attempt 2 |
 
 ## Not verified
 
-- **GitHub Actions CI** has never run: there is no remote yet. This includes the new gitleaks job (`.gitleaks.toml` allowlists the `dev-only-*` placeholders; it was not run locally).
 - **Real Groq model:** only the mock LLM was exercised.
 - **Browser walkthrough** of the UI: the API flow was driven by script, not clicked through.
 
 ## Left for you
 
-1. Create the GitHub repo, `git remote add origin …`, push `main` and the tags, and confirm CI is green.
+1. ~~Create the GitHub repo and push~~: done, `squidchemistry/SecureHire`, CI green.
 2. Render: New > Blueprint with `render.yaml`. The free tier has no background workers: either delete the `securehire-worker` block and set `EMBEDDED_WORKER=true`, or use a paid worker. Optionally set `GROQ_API_KEY`.
 3. Vercel: root directory `frontend`, `VITE_API_URL` = the Render API URL.
 4. Set `ALLOWED_ORIGINS` / `ALLOWED_ORIGIN_REGEX` on Render to the real Vercel domain (render.yaml assumes `securehire.vercel.app`).
