@@ -182,6 +182,19 @@ def test_security_headers(client):
     assert r.headers["cache-control"] == "no-store"
 
 
+def test_readiness_checks_the_database(client, monkeypatch):
+    assert client.get("/api/ready").json() == {"status": "ready", "database": "ok"}
+
+    class _Down:
+        def connect(self):
+            raise OSError("connection refused")
+
+    monkeypatch.setattr("app.main.get_engine", lambda: _Down())
+    r = client.get("/api/ready")
+    assert r.status_code == 503
+    assert r.json()["database"] == "down"
+
+
 # --- audit ---------------------------------------------------------------------
 
 def test_audit_trail_and_chain(client):

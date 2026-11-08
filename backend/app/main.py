@@ -8,10 +8,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api import analyses, auth, runs
 from app.config import get_settings
-from app.db import init_db
+from app.db import get_engine, init_db
 
 log = logging.getLogger("securehire")
 
@@ -82,6 +83,17 @@ def create_app() -> FastAPI:
     @app.get("/api/health", tags=["meta"])
     def health() -> dict[str, str]:
         return {"status": "ok", "llm": settings.resolved_llm_provider}
+
+    @app.get("/api/ready", tags=["meta"])
+    def ready() -> JSONResponse:
+        """Readiness: the API can reach its database. Liveness stays on /api/health."""
+        try:
+            with get_engine().connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception:
+            log.warning("readiness check failed: database unreachable", exc_info=True)
+            return JSONResponse({"status": "unavailable", "database": "down"}, status_code=503)
+        return JSONResponse({"status": "ready", "database": "ok"})
 
     app.include_router(auth.router)
     app.include_router(runs.router)

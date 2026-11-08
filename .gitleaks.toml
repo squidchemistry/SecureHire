@@ -1,0 +1,11 @@
+# Gitleaks config: the default ruleset plus an allowlist for the dev-only
+# placeholders below. Production refuses to start with any of them (see app/config.py).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known dev/test placeholders, not real secrets"
+regexes = [
+  '''dev-only-[a-z-]+''',
+  '''irrelevant-pw''',
+]
